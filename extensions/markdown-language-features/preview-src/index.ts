@@ -148,35 +148,41 @@ function addImageContexts() {
 	}
 }
 
-async function copyImage(image: HTMLImageElement, retries = 5) {
+async function copyImage(base64Data: string, mimeType = 'image/png', retries = 5) {
+	document.getElementsByTagName('body')[0].focus();
 	if (!document.hasFocus() && retries > 0) {
 		// copyImage is called at the same time as webview.reveal, which means this function is running whilst the webview is gaining focus.
 		// Since navigator.clipboard.write requires the document to be focused, we need to wait for focus.
 		// We cannot use a listener, as there is a high chance the focus is gained during the setup of the listener resulting in us missing it.
-		setTimeout(() => { copyImage(image, retries - 1); }, 20);
+		setTimeout(() => { copyImage(base64Data, mimeType, retries - 1); }, 20);
 		return;
 	}
 
+	const [meta, base64Str] = base64Data.split(',');
+	// Extract the MIME type, e.g., 'image/png'
+	const mime = meta.match(/data:(.*?);base64/)?.[1] || '';
+
+	// Decode base64 → binary
+	const byteChars = atob(base64Str);
+	const byteNumbers = new Array(byteChars.length);
+	for (let i = 0; i < byteChars.length; i++) {
+		byteNumbers[i] = byteChars.charCodeAt(i);
+	}
+	const byteArray = new Uint8Array(byteNumbers);
+
+	// Create a Blob with the binary data and the detected MIME type
+	const imageBlob = new Blob([byteArray], { type: mime });
 	try {
-		await navigator.clipboard.write([new ClipboardItem({
-			'image/png': new Promise((resolve) => {
-				const canvas = document.createElement('canvas');
-				if (canvas !== null) {
-					canvas.width = image.naturalWidth;
-					canvas.height = image.naturalHeight;
-					const context = canvas.getContext('2d');
-					context?.drawImage(image, 0, 0);
-				}
-				canvas.toBlob((blob) => {
-					if (blob) {
-						resolve(blob);
-					}
-					canvas.remove();
-				}, 'image/png');
-			})
-		})]);
-	} catch (e) {
-		console.error(e);
+		// Convert base64 data URL into a Blob (no fetch required)
+
+		// Create a ClipboardItem from the blob
+		const clipboardItem = new ClipboardItem({ [mimeType]: imageBlob });
+
+		// Write the ClipboardItem to the system clipboard
+		await navigator.clipboard.write([clipboardItem]);
+		console.log('Copied image to clipboard (no fetch)!');
+	} catch (err) {
+		console.error('Failed to copy image:', err);
 	}
 }
 
@@ -184,10 +190,7 @@ window.addEventListener('message', async event => {
 	const data = event.data as ToWebviewMessage.Type;
 	switch (data.type) {
 		case 'copyImage': {
-			const img = document.getElementById(data.id);
-			if (img instanceof HTMLImageElement) {
-				copyImage(img);
-			}
+			copyImage(data.id);
 			return;
 		}
 		case 'onDidChangeTextEditorSelection':
