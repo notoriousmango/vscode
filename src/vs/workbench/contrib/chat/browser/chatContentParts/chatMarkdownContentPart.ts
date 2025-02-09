@@ -84,7 +84,7 @@ export class ChatMarkdownContentPart extends Disposable implements IChatContentP
 		const result = this._register(renderer.render(markdown.content, {
 			fillInIncompleteTokens,
 			codeBlockRendererSync: (languageId, text, raw) => {
-				const isCodeBlockComplete = !isResponseVM(context.element) || context.element.isComplete || !raw || raw?.trim().endsWith('```');
+				const isCodeBlockComplete = !isResponseVM(context.element) || context.element.isComplete || !raw || codeblockHasClosingBackticks(raw);
 				if ((!text || (text.startsWith('<vscode_codeblock_uri>') && !text.includes('\n'))) && !isCodeBlockComplete && rendererOptions.renderCodeBlockPills) {
 					const hideEmptyCodeblock = $('div');
 					hideEmptyCodeblock.style.display = 'none';
@@ -278,6 +278,11 @@ export class EditorPool extends Disposable {
 	}
 }
 
+function codeblockHasClosingBackticks(str: string): boolean {
+	str = str.trim();
+	return !!str.match(/\n```+$/);
+}
+
 class CollapsedCodeBlock extends Disposable {
 
 	public readonly element: HTMLElement;
@@ -287,10 +292,10 @@ class CollapsedCodeBlock extends Disposable {
 		return this._uri;
 	}
 
-	private readonly _progressStore = new DisposableStore();
+	private readonly _progressStore = this._store.add(new DisposableStore());
 
 	constructor(
-		sessionId: string,
+		private readonly sessionId: string,
 		requestId: string,
 		@ILabelService private readonly labelService: ILabelService,
 		@IEditorService private readonly editorService: IEditorService,
@@ -330,7 +335,7 @@ class CollapsedCodeBlock extends Disposable {
 		this._uri = uri;
 
 		const iconText = this.labelService.getUriBasenameLabel(uri);
-		const modifiedEntry = this.chatEditingService.currentEditingSession?.getEntry(uri);
+		const modifiedEntry = this.chatEditingService.getEditingSession(this.sessionId)?.getEntry(uri);
 		const isComplete = !modifiedEntry?.isCurrentlyBeingModified.get();
 
 		let iconClasses: string[] = [];
